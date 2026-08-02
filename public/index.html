@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>German Immersion Tracker</title>
+<link rel="stylesheet" href="/styles.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 5 3'><rect width='5' height='1' fill='%23000'/><rect y='1' width='5' height='1' fill='%23dd0000'/><rect y='2' width='5' height='1' fill='%23ffce00'/></svg>" />
+</head>
+<body>
+<div class="glow glow-a"></div>
+<div class="glow glow-b"></div>
+
+<main class="wrap">
+
+  <header class="head">
+    <div class="brand">
+      <span class="flag flag-icon flag-de" id="brandFlag" aria-hidden="true"></span>
+      <div>
+        <h1 id="brandTitle">German Immersion Tracker</h1>
+        <p class="sub" id="brandSub">Deutsch lernen — every hour counted.</p>
+      </div>
+    </div>
+    <div class="head-actions">
+      <div class="lang-picker">
+        <button class="ghost-btn lang-btn" type="button" id="langBtn" aria-haspopup="true" aria-expanded="false">
+          <span class="flag-icon flag-de" id="langBtnFlag" aria-hidden="true"></span>
+          <span id="langBtnName">German</span>
+          <span class="caret">▾</span>
+        </button>
+        <div class="lang-menu card" id="langMenu" hidden role="menu"></div>
+      </div>
+      <a class="ghost-btn" id="csvLink" href="/api/csv?lang=de" download>⬇ Download CSV</a>
+    </div>
+  </header>
+
+  <!-- -------------------------------------------------------- daily goal -->
+  <section class="goal-bar card" aria-label="Daily goal">
+    <span class="goal-label">Daily Goal</span>
+    <div class="goal-track"><div class="goal-fill" id="goalFill"></div></div>
+    <span class="goal-num" id="goalNum">0/60 min</span>
+    <input class="goal-input" id="goalInput" type="number" min="0" max="1440" step="5" hidden
+           aria-label="Daily goal in minutes" />
+    <button class="goal-edit" id="goalEdit" type="button" title="Change your daily goal">✏️</button>
+  </section>
+
+  <!-- ---------------------------------------------------------- dashboard -->
+  <section class="stats" aria-label="Dashboard">
+    <article class="card stat hero">
+      <span class="label">Total immersion</span>
+      <strong class="value" id="statTotal">0.00<em>h</em></strong>
+      <span class="foot" id="statTotalFoot">no sessions yet</span>
+    </article>
+
+    <article class="card stat accent-red">
+      <span class="label">Today</span>
+      <strong class="value" id="statToday">0.00<em>h</em></strong>
+      <span class="foot" id="statTodayFoot">0 videos today</span>
+    </article>
+
+    <article class="card stat accent-gold">
+      <span class="label">Last 7 days</span>
+      <strong class="value" id="statWeek">0.00<em>h</em></strong>
+      <span class="foot" id="statWeekFoot">avg 0.00 h/day</span>
+    </article>
+
+    <article class="card stat">
+      <span class="label">Streak</span>
+      <strong class="value" id="statStreak">0<em>d</em></strong>
+      <span class="foot" id="statStreakFoot">start today!</span>
+    </article>
+  </section>
+
+  <!-- --------------------------------------------------------------- form -->
+  <section class="card add" aria-label="Add a video">
+    <form id="addForm" autocomplete="off">
+      <div class="row">
+        <div class="field grow">
+          <label for="url">YouTube link</label>
+          <input id="url" name="url" type="text" placeholder="https://www.youtube.com/watch?v=…" required />
+        </div>
+        <div class="field">
+          <label for="date">Date watched</label>
+          <input id="date" name="date" type="date" />
+        </div>
+        <button class="primary" type="submit" id="submitBtn">
+          <span class="btn-label">Log immersion</span>
+          <span class="spinner" hidden></span>
+        </button>
+      </div>
+
+      <div class="link-row">
+        <button class="link-btn" type="button" id="manualToggle">⌨ Enter the duration myself</button>
+        <button class="link-btn" type="button" id="baselineToggle">⚑ Set starting baseline</button>
+      </div>
+
+      <div class="manual" id="manualBox" hidden>
+        <p class="manual-msg" id="manualMsg"></p>
+        <div class="row tight">
+          <div class="field">
+            <label for="mH">Hours</label>
+            <input id="mH" type="number" min="0" step="1" placeholder="0" />
+          </div>
+          <div class="field">
+            <label for="mM">Minutes</label>
+            <input id="mM" type="number" min="0" max="59" step="1" placeholder="0" />
+          </div>
+          <div class="field">
+            <label for="mS">Seconds</label>
+            <input id="mS" type="number" min="0" max="59" step="1" placeholder="0" />
+          </div>
+          <div class="field grow" id="mTitleField">
+            <label for="mTitle">Title (optional)</label>
+            <input id="mTitle" type="text" placeholder="Video title" />
+          </div>
+          <button class="primary alt" type="button" id="manualSave">Save with this duration</button>
+        </div>
+      </div>
+
+      <p class="msg" id="msg" hidden></p>
+    </form>
+  </section>
+
+  <!-- ------------------------------------------------ progression + stats -->
+  <section class="two-col">
+    <article class="card progression">
+      <div class="card-head"><h2>Overall progression <span class="lang-chip" id="progChip"></span></h2></div>
+      <div class="level-bars" id="levelBars"></div>
+      <p class="level-now">
+        You are currently in
+        <strong id="levelNow">Level 1</strong>
+      </p>
+      <div class="level-progress">
+        <div class="lp-head">
+          <span>Total input time</span>
+          <strong id="lpTotal">0 hrs</strong>
+        </div>
+        <div class="lp-track"><div class="lp-fill" id="lpFill"></div></div>
+        <div class="lp-scale">
+          <span id="lpFrom">0 hrs</span>
+          <span id="lpTo">50 hrs</span>
+        </div>
+      </div>
+      <div class="level-next" id="levelNext">
+        <span>Hours to level 2</span>
+        <strong id="levelNextHrs">50 hrs</strong>
+      </div>
+    </article>
+
+    <article class="card statistics">
+      <div class="card-head"><h2>Statistics</h2></div>
+      <div class="stat-tiles">
+        <div class="tile tile-a">
+          <span class="tile-icon">⏰</span>
+          <strong id="statWatched">0</strong>
+          <span class="tile-label">hours watched</span>
+        </div>
+        <div class="tile tile-b">
+          <span class="tile-icon">🎬</span>
+          <strong id="statVideos">0</strong>
+          <span class="tile-label">watched videos</span>
+        </div>
+        <div class="tile tile-c">
+          <span class="tile-icon">🗓️</span>
+          <strong id="statDays">0</strong>
+          <span class="tile-label">days you practiced</span>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <!-- ------------------------------------------------------------- levels -->
+  <section class="card levels-card">
+    <div class="card-head">
+      <h2>Levels <span class="lang-chip" id="levelsChip"></span></h2>
+      <span class="hint" id="levelsHint">based on your daily goal</span>
+    </div>
+    <div class="levels" id="levels"></div>
+  </section>
+
+  <!-- -------------------------------------------------------------- chart -->
+  <section class="card chart-card">
+    <div class="card-head">
+      <h2>Last 14 days</h2>
+      <span class="hint" id="chartHint">hours per day</span>
+    </div>
+    <div class="chart" id="chart"></div>
+  </section>
+
+  <!-- --------------------------------------------------------------- log -->
+  <section class="card log-card">
+    <div class="card-head">
+      <h2>Immersion log <span class="lang-chip" id="logChip"></span></h2>
+      <div class="log-tools">
+        <input id="search" type="search" placeholder="Search title or channel…" />
+        <span class="count" id="logCount">0 entries</span>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table id="logTable">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Video</th>
+            <th class="num">Hours</th>
+            <th class="num">Length</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="logBody"></tbody>
+      </table>
+    </div>
+    <p class="empty" id="empty" hidden>Nothing logged yet — paste a YouTube link above to begin. 🎧</p>
+  </section>
+
+  <footer class="foot-note">
+    <span class="lang-chip" id="footChip"></span>
+    Database: <code id="csvPath">data/immersion_log_de.csv</code>
+  </footer>
+
+  <!-- offscreen player used only to read a video's duration -->
+  <div id="ytHost" aria-hidden="true"></div>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

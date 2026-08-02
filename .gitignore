@@ -1,0 +1,26 @@
+# ---- Your immersion data (personal, written at runtime) ----
+# The app recreates data/ on first start. Delete these three lines if you
+# would rather keep your logs backed up in the repo.
+data/*.csv
+data/settings.json
+
+# ---- Node ----
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json.bak
+.env
+.env.local
+
+# ---- Editors / tooling ----
+.vscode/
+.idea/
+*.swp
+.claude/settings.local.json
+
+# ---- OS cruft ----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
