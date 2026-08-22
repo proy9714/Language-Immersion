@@ -2,8 +2,8 @@
 
 # 🎧 Immersion Tracker
 
-**Paste a YouTube link → its duration is appended to a CSV.**
-The CSV *is* the database. No API keys, no accounts, no dependencies.
+**Paste a YouTube link — or log what you watched, read, listened to or spoke.**
+Every session lands in a CSV. The CSV *is* the database. No API keys, no accounts, no dependencies.
 
 [![Node](https://img.shields.io/badge/Node-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#)
@@ -38,8 +38,9 @@ Or just double-click **`start.bat`**. Then open **<http://localhost:4545>**.
 | | |
 | :-- | :-- |
 | 🔗 **Paste & log** | Drop in a YouTube URL — title, channel and exact duration are fetched automatically |
+| ✍️ **Log anything else** | Watching · Reading · Listening · Speaking — your own title, your own hours and minutes |
 | 🌍 **Three languages** | German, Japanese and Spanish, each with its own log, goal, baseline, level and streak |
-| 🎯 **Daily goal** | A bar across the top turns green the moment you hit today's minutes |
+| 🎯 **Daily goal** | A bar across the top turns green the moment you hit today's target |
 | 📈 **Dashboard** | Total · today · last 7 days (with daily average) · current day-streak · 14-day bar chart |
 | 🏆 **Levels** | A 7-step roadmap from *"starting from zero"* to *"effective for all practical purposes"* |
 | 🗄️ **Plain CSV** | Openable in Excel or Sheets, editable by hand, re-read on every request |
@@ -86,9 +87,29 @@ start, and the old daily goal carries over to German. Nothing to do by hand.
 
 ---
 
+## 🏷️ Categories
+
+Five kinds of immersion, picked with the tabs above the form. Only the first one talks to
+YouTube — the rest are yours to type.
+
+| | Category | What you enter |
+| :-: | :-- | :-- |
+| ▶ | **YouTube** | A link. Title, channel and exact duration are fetched for you |
+| 📺 | **Watching** | Title *(optional)* + how long — films, series, streams, anything on a screen |
+| 📖 | **Reading** | Title *(optional)* + how long — books, manga, articles, subtitles |
+| 🎧 | **Listening** | Title *(optional)* + how long — podcasts, radio, music, audiobooks |
+| 🗣️ | **Speaking** | Title *(optional)* + how long — tandems, lessons, thinking out loud |
+
+Durations are entered as **hours and minutes** — never decimals. Leave the title blank and
+the row is named after its category (*"Reading session"*). Every category counts towards the
+same total, streak, chart and levels; the *Statistics* card breaks down where the time went,
+and the log can be filtered to one category at a time.
+
+---
+
 ## 🗄️ The database
 
-`data/immersion_log_<lang>.csv` — **one row per watch session, append-only.**
+`data/immersion_log_<lang>.csv` — **one row per session, append-only.**
 
 <details>
 <summary><b>Column reference</b> (click to expand)</summary>
@@ -98,14 +119,15 @@ start, and the old daily goal carries over to German. Nothing to do by hand.
 | Column | Meaning |
 | :-- | :-- |
 | `entry_id` | Internal id (used to delete a row) |
-| `kind` | `video`, or `baseline` for the pre-tracking carry-over |
-| `date` | Date you watched it (`YYYY-MM-DD`) — empty for the baseline |
-| `url` | Canonical YouTube link |
-| `video_id` | 11-character YouTube id |
-| `title` | Video title |
-| `channel` | Channel name |
-| `duration_seconds` | Length in seconds (exact) |
-| `duration_hours` | Same value in hours, 4 dp |
+| `kind` | `session`, or `baseline` for the pre-tracking carry-over |
+| `category` | `youtube` · `watching` · `reading` · `listening` · `speaking` — empty for the baseline |
+| `date` | Date of the session (`YYYY-MM-DD`) — empty for the baseline |
+| `url` | Canonical YouTube link (empty for typed-in sessions) |
+| `video_id` | 11-character YouTube id (empty for typed-in sessions) |
+| `title` | Video title, or whatever you typed |
+| `channel` | Channel name (YouTube only) |
+| `duration_seconds` | Length in seconds (exact) — the machine-readable one |
+| `duration_hm` | The same length written out, e.g. `1h 23m` |
 | `logged_at` | When the row was written |
 
 </details>
@@ -113,7 +135,12 @@ start, and the old daily goal carries over to German. Nothing to do by hand.
 > [!IMPORTANT]
 > **Duplicates are intentional.** Watching the same video twice writes two rows and counts
 > twice. The log shows a `×N` badge so you can see how often a video repeats, but every
-> row's hours are counted separately.
+> row's time is counted separately.
+
+> [!NOTE]
+> Logs written before categories existed are **upgraded in place on first start** — old rows
+> become `kind=session`, `category=youtube`, and the decimal `duration_hours` column is
+> replaced by `duration_hm`. Nothing to do by hand.
 
 The file is properly quoted RFC 4180 — open it in Excel or Sheets any time. Editing it by
 hand is fine; the app re-reads it on every request.
@@ -126,12 +153,13 @@ hand is fine; the app re-reads it on every request.
 
 ## 📊 Dashboard
 
-All figures are in **hours**.
+Every duration is shown as **hours and minutes** — `1h 23m`, `45m` — never decimal hours.
 
 ### 🎯 Daily goal
 
-A bar across the top shows today's minutes against your goal, turning green once you hit it.
-Click the number or the ✏️ to change it — **Enter** saves, **Escape** cancels. Each language
+A bar across the top shows today's time against your goal, turning green once you hit it.
+Click the number or the ✏️ to change it — the goal is set in hours and minutes too, and
+**Enter** saves while **Escape** cancels. Each language
 keeps its own goal in `data/settings.json` (preferences, not immersion data, so they stay
 out of the CSVs).
 
@@ -150,32 +178,32 @@ A seven-level roadmap based on hours of comprehensible input:
 | 7️⃣ | 1,500 | 12,000+ | You can use the language effectively for all practical purposes. |
 
 ***Overall progression*** shows which level you're in, a bar filling from the current
-level's threshold to the next, and the hours still to go. Each locked level estimates when
+level's threshold to the next, and the time still to go. Each locked level estimates when
 you'll reach it:
 
 ```text
 days remaining = ceil( (threshold − total hours) ÷ daily goal )
 ```
 
-Known-word counts are descriptive only — the app tracks **hours**, not vocabulary.
+Known-word counts are descriptive only — the app tracks **time**, not vocabulary.
 
-***Statistics*** counts **hours watched** (logged videos, excluding the baseline),
-**watched videos**, and **days you practiced** (distinct dates in the log).
+***Statistics*** counts **time immersed** (logged sessions, excluding the baseline),
+**sessions logged** and **days you practiced** (distinct dates in the log), then splits the
+time across the five categories so you can see whether you only ever watch.
 
 ---
 
 ## ⚑ Baseline
 
-Hours immersed *before* you started tracking. It is a single row in the CSV
+Time immersed *before* you started tracking. It is a single row in the CSV
 (`kind=baseline`), so **the total is always just the sum of the file** — nothing is hidden
 in a side config.
 
 Because it carries no date, it is invisible to *Today*, *Last 7 days*, the streak and the
 chart. It only moves the total.
 
-* German is currently set to **14 h 31 min**; Japanese and Spanish start at zero.
-* Change it with **⚑ Set starting baseline** under the link box — the field pre-fills with
-  the current value, and saving **replaces** the row rather than adding another.
+* Change it with **⚑ Set starting baseline** under the form — the hours and minutes
+  pre-fill with the current value, and saving **replaces** the row rather than adding another.
 * Set it to zero to remove it entirely.
 
 ---
@@ -230,15 +258,15 @@ and destroyed immediately.
 </td><td>
 
 Only reachable if a video refuses to embed at all (`101`/`150`), is private/deleted, or is a
-live stream with no fixed length. A box opens pre-filled with the title for you to type
-hours / minutes / seconds.
+live stream with no fixed length. A box opens pre-filled with the title for you to type the
+hours and minutes.
 
 </td></tr>
 </table>
 
 > [!TIP]
 > You can open that box yourself with **⌨ Enter the duration myself** — use it when you only
-> watched *part* of a long video, since what you're tracking is hours immersed, not video
+> watched *part* of a long video, since what you're tracking is time immersed, not video
 > length.
 
 ---
@@ -260,7 +288,7 @@ hours / minutes / seconds.
 ├── start.bat        # double-click launcher (opens the browser, then starts the server)
 ├── public/
 │   ├── index.html   # the whole UI
-│   ├── app.js       # dashboard, IFrame duration fallback, language switching
+│   ├── app.js       # dashboard, categories, IFrame duration fallback, language switching
 │   └── styles.css   # incl. the hand-drawn CSS/SVG flags
 └── data/            # gitignored — your CSVs and settings.json live here
 ```

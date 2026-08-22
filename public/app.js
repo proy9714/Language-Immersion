@@ -1,22 +1,26 @@
-/* German Immersion Tracker — frontend */
+/* Immersion Tracker — frontend */
 
 const $ = (id) => document.getElementById(id);
 
 const el = {
-  form: $('addForm'), url: $('url'), date: $('date'),
-  submitBtn: $('submitBtn'), spinner: document.querySelector('#submitBtn .spinner'),
+  form: $('addForm'), url: $('url'), date: $('date'), title: $('title'),
+  cH: $('cH'), cM: $('cM'),
+  urlField: $('urlField'), titleField: $('titleField'), timeField: $('timeField'),
+  catTabs: $('catTabs'), catFilter: $('catFilter'), catSplit: $('catSplit'),
+  submitBtn: $('submitBtn'),
   btnLabel: document.querySelector('#submitBtn .btn-label'),
   msg: $('msg'),
   manualBox: $('manualBox'), manualMsg: $('manualMsg'), manualSave: $('manualSave'),
-  mH: $('mH'), mM: $('mM'), mS: $('mS'), mTitle: $('mTitle'),
+  mH: $('mH'), mM: $('mM'), mTitle: $('mTitle'),
   chart: $('chart'), logBody: $('logBody'), logCount: $('logCount'),
   empty: $('empty'), search: $('search'), csvPath: $('csvPath'),
   manualToggle: $('manualToggle'), ytHost: $('ytHost'),
   baselineToggle: $('baselineToggle'), mTitleField: $('mTitleField'),
-  goalFill: $('goalFill'), goalNum: $('goalNum'), goalEdit: $('goalEdit'), goalInput: $('goalInput'),
+  goalFill: $('goalFill'), goalNum: $('goalNum'), goalEdit: $('goalEdit'),
+  goalEditor: $('goalEditor'), goalH: $('goalH'), goalM: $('goalM'),
   levelBars: $('levelBars'), levelNow: $('levelNow'), lpTotal: $('lpTotal'), lpFill: $('lpFill'),
   lpFrom: $('lpFrom'), lpTo: $('lpTo'), levelNext: $('levelNext'), levelNextHrs: $('levelNextHrs'),
-  statWatched: $('statWatched'), statVideos: $('statVideos'), statDays: $('statDays'),
+  statWatched: $('statWatched'), statSessions: $('statSessions'), statDays: $('statDays'),
   levels: $('levels'), levelsHint: $('levelsHint'),
   langBtn: $('langBtn'), langMenu: $('langMenu'), langBtnFlag: $('langBtnFlag'),
   langBtnName: $('langBtnName'), brandFlag: $('brandFlag'), brandTitle: $('brandTitle'),
@@ -29,6 +33,16 @@ const FLAG_SVG = {
   de: "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 5 3'><rect width='5' height='1' fill='%23000'/><rect y='1' width='5' height='1' fill='%23dd0000'/><rect y='2' width='5' height='1' fill='%23ffce00'/></svg>",
   es: "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23aa151b'/><rect y='0.75' width='4' height='1.5' fill='%23f1bf00'/></svg>",
   ja: "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 3 2'><rect width='3' height='2' fill='%23fff'/><circle cx='1.5' cy='1' r='0.6' fill='%23bc002d'/></svg>",
+};
+
+/* Colours per category. The server owns the list itself — this is presentation only. */
+const CAT_STYLE = {
+  youtube:   { color: '#ff6b5b', soft: 'rgba(255,107,91,.14)',  line: 'rgba(255,107,91,.36)' },
+  watching:  { color: '#7dd3fc', soft: 'rgba(125,211,252,.13)', line: 'rgba(125,211,252,.34)' },
+  reading:   { color: '#c084fc', soft: 'rgba(192,132,252,.13)', line: 'rgba(192,132,252,.34)' },
+  listening: { color: '#5eead4', soft: 'rgba(94,234,212,.12)',  line: 'rgba(94,234,212,.32)' },
+  speaking:  { color: '#f5c542', soft: 'rgba(245,197,66,.13)',  line: 'rgba(245,197,66,.34)' },
+  baseline:  { color: '#94a3b8', soft: 'rgba(148,163,184,.12)', line: 'rgba(148,163,184,.3)' },
 };
 
 /* Comprehensible-input roadmap: hours of input needed to reach each level. */
@@ -46,9 +60,11 @@ let entries = [];
 let settings = { dailyGoalMinutes: 60 };
 let today = localDate(new Date());
 let languages = [];
+let categories = [];
 // Active language code. Null until the first load, so the server can pick the one that
 // was open last; ?lang=xx in the address bar overrides it.
 let lang = new URLSearchParams(location.search).get('lang') || null;
+let category = 'youtube'; // which tab the add-form is on
 let pending = null; // video awaiting a manual duration
 let manualMode = 'video'; // "video" | "baseline"
 
@@ -66,15 +82,28 @@ function shiftDate(iso, days) {
 }
 
 const hours = (secs) => secs / 3600;
-const fmtH = (h) => h.toFixed(2);
 
-function fmtClock(secs) {
-  const s = Math.round(secs);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  const p = (n) => String(n).padStart(2, '0');
-  return h ? `${h}:${p(m)}:${p(sec)}` : `${m}:${p(sec)}`;
+/**
+ * Every duration in the UI is hours and minutes — never decimal hours.
+ * 4530s → "1h 16m", 900s → "15m", 7200s → "2h".
+ */
+function fmtHm(secs) {
+  const mins = Math.round(Math.max(0, secs) / 60);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+}
+
+/** Same figure, with the units marked up so they can be styled down. */
+function hmMarkup(secs) {
+  const mins = Math.round(Math.max(0, secs) / 60);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h && m) return `${h}<em>h</em> ${m}<em>m</em>`;
+  if (h) return `${h}<em>h</em>`;
+  return `${m}<em>m</em>`;
 }
 
 function prettyDate(iso) {
@@ -106,6 +135,84 @@ function busy(on, btn = el.submitBtn) {
   const sp = btn.querySelector('.spinner');
   if (sp) sp.hidden = !on;
 }
+
+/* ------------------------------------------------------------- categories */
+
+const catMeta = (id) => {
+  const found = categories.find((c) => c.id === id);
+  const style = CAT_STYLE[id] || CAT_STYLE.baseline;
+  return {
+    id,
+    label: found ? found.label : id === 'baseline' ? 'Baseline' : id || '—',
+    icon: found ? found.icon : id === 'baseline' ? '⚑' : '•',
+    ...style,
+  };
+};
+
+/** The category of an entry, with the baseline treated as its own pseudo-category. */
+const entryCat = (e) => (e.kind === 'baseline' ? 'baseline' : e.category || 'youtube');
+
+function catChip(id) {
+  const c = catMeta(id);
+  return `<span class="cat-chip" style="--c:${c.color};--c-soft:${c.soft};--c-line:${c.line}">
+      <span class="cat-ic">${c.icon}</span>${esc(c.label)}</span>`;
+}
+
+function renderCategoryTabs() {
+  el.catTabs.innerHTML = categories
+    .map((c) => {
+      const s = CAT_STYLE[c.id] || CAT_STYLE.baseline;
+      return `<button type="button" role="tab" class="cat-tab ${c.id === category ? 'on' : ''}"
+        aria-selected="${c.id === category}" data-cat="${c.id}"
+        style="--c:${s.color};--c-soft:${s.soft};--c-line:${s.line}">
+        <span class="ct-ic">${c.icon}</span><span class="ct-label">${esc(c.label)}</span>
+      </button>`;
+    })
+    .join('');
+
+  const keep = el.catFilter.value;
+  el.catFilter.innerHTML =
+    `<option value="">All types</option>` +
+    categories.map((c) => `<option value="${c.id}">${esc(c.icon + ' ' + c.label)}</option>`).join('') +
+    `<option value="baseline">⚑ Baseline</option>`;
+  el.catFilter.value = keep;
+}
+
+/** Swap the add-form between "paste a link" and "type a duration". */
+function applyCategory() {
+  const isYt = category === 'youtube';
+  const c = catMeta(category);
+
+  el.urlField.hidden = !isYt;
+  el.titleField.hidden = isYt;
+  el.timeField.hidden = isYt;
+  el.manualToggle.hidden = !isYt;
+  el.btnLabel.textContent = isYt ? 'Log immersion' : `Log ${c.label.toLowerCase()}`;
+  el.title.placeholder =
+    {
+      watching: 'e.g. Dark — S01E02',
+      reading: 'e.g. Der Kleine Prinz — chapter 3',
+      listening: 'e.g. Slow German podcast #48',
+      speaking: 'e.g. Tandem call with Lena',
+    }[category] || 'What did you immerse in?';
+
+  el.catTabs.querySelectorAll('.cat-tab').forEach((tab) => {
+    const on = tab.dataset.cat === category;
+    tab.classList.toggle('on', on);
+    tab.setAttribute('aria-selected', String(on));
+  });
+}
+
+el.catTabs.addEventListener('click', (ev) => {
+  const tab = ev.target.closest('.cat-tab');
+  if (!tab || tab.dataset.cat === category) return;
+  category = tab.dataset.cat;
+  pending = null;
+  el.msg.hidden = true;
+  closeManual();
+  applyCategory();
+  (category === 'youtube' ? el.url : el.title).focus();
+});
 
 /* ------------------------------------------- duration lookup in the browser */
 /*
@@ -218,10 +325,13 @@ async function load() {
   entries = data.entries;
   if (data.settings) settings = data.settings;
   if (data.languages) languages = data.languages;
+  if (data.categories) categories = data.categories;
   today = data.today;
   if (data.csvPath) el.csvPath.textContent = data.csvPath;
   if (!el.date.value) el.date.value = today;
   renderLanguage();
+  renderCategoryTabs();
+  applyCategory();
   render();
 }
 
@@ -278,6 +388,7 @@ async function switchLanguage(code) {
   el.msg.hidden = true;
   closeManual();
   el.search.value = '';
+  el.catFilter.value = '';
   el.form.reset();
   await load();
   el.date.value = today;
@@ -326,7 +437,8 @@ function render(flashId) {
 /* ------------------------------------------------------ levels & progress */
 
 const totalSeconds = () => entries.reduce((a, e) => a + e.duration_seconds, 0);
-const videoEntries = () => entries.filter((e) => e.kind !== 'baseline');
+const sessionEntries = () => entries.filter((e) => e.kind !== 'baseline');
+const sumSeconds = (list) => list.reduce((a, e) => a + e.duration_seconds, 0);
 
 function levelFor(totalHours) {
   let current = LEVELS[0];
@@ -343,20 +455,19 @@ function daysAtGoal(hoursNeeded) {
 
 function renderGoal() {
   const goal = settings.dailyGoalMinutes;
-  const todayMins =
-    videoEntries()
-      .filter((e) => e.date === today)
-      .reduce((a, e) => a + e.duration_seconds, 0) / 60;
+  const doneSecs = sumSeconds(sessionEntries().filter((e) => e.date === today));
+  const todayMins = doneSecs / 60;
 
-  const done = Math.round(todayMins);
   const pct = goal > 0 ? Math.min((todayMins / goal) * 100, 100) : 0;
   el.goalFill.style.width = pct + '%';
   el.goalFill.classList.toggle('done', goal > 0 && todayMins >= goal);
-  el.goalNum.textContent = goal > 0 ? `${done}/${goal} min` : `${done} min · no goal set`;
+  el.goalNum.textContent =
+    goal > 0 ? `${fmtHm(doneSecs)} / ${fmtHm(goal * 60)}` : `${fmtHm(doneSecs)} · no goal set`;
 }
 
 function renderProgression() {
-  const totalH = hours(totalSeconds());
+  const totalSecs = totalSeconds();
+  const totalH = hours(totalSecs);
   const current = levelFor(totalH);
   const next = LEVELS.find((l) => l.hours > totalH) || null;
 
@@ -367,39 +478,60 @@ function renderProgression() {
     return `<div class="lb ${on ? 'on' : ''} ${l.n === current.n ? 'cur' : ''}"
        style="height:${h}%;animation-delay:${i * 45}ms;color:${l.color};${
       on ? `background:${l.color}` : ''
-    }" title="Level ${l.n} — ${l.hours} h"></div>`;
+    }" title="Level ${l.n} — ${l.hours}h"></div>`;
   }).join('');
 
   el.levelNow.textContent = `Level ${current.n}`;
-  el.lpTotal.textContent = `${fmtH(totalH)} hrs`;
+  el.lpTotal.textContent = fmtHm(totalSecs);
 
   const from = current.hours;
   const to = next ? next.hours : current.hours;
   const span = to - from;
   const pct = span > 0 ? Math.min(((totalH - from) / span) * 100, 100) : 100;
   el.lpFill.style.width = pct + '%';
-  el.lpFrom.textContent = `${from} hrs`;
-  el.lpTo.textContent = next ? `${to} hrs` : 'max';
+  el.lpFrom.textContent = `${from}h`;
+  el.lpTo.textContent = next ? `${to}h` : 'max';
 
+  el.levelNext.hidden = false;
   if (next) {
-    el.levelNext.hidden = false;
-    el.levelNext.firstElementChild.textContent = `Hours to level ${next.n}`;
-    el.levelNextHrs.textContent = `${fmtH(next.hours - totalH)} hrs`;
+    el.levelNext.firstElementChild.textContent = `Time to level ${next.n}`;
+    el.levelNextHrs.textContent = fmtHm(next.hours * 3600 - totalSecs);
   } else {
-    el.levelNext.hidden = false;
     el.levelNext.firstElementChild.textContent = 'Highest level reached';
     el.levelNextHrs.textContent = '🎉';
   }
 }
 
 function renderStatistics() {
-  const videos = videoEntries();
-  const watchedH = hours(videos.reduce((a, e) => a + e.duration_seconds, 0));
-  const days = new Set(videos.map((e) => e.date).filter(Boolean));
+  const sessions = sessionEntries();
+  const days = new Set(sessions.map((e) => e.date).filter(Boolean));
 
-  el.statWatched.textContent = fmtH(watchedH);
-  el.statVideos.textContent = videos.length;
+  el.statWatched.textContent = fmtHm(sumSeconds(sessions));
+  el.statSessions.textContent = sessions.length;
   el.statDays.textContent = days.size;
+
+  // where the time actually went
+  const rows = categories
+    .map((c) => ({ ...catMeta(c.id), secs: sumSeconds(sessions.filter((e) => entryCat(e) === c.id)) }))
+    .sort((a, b) => b.secs - a.secs);
+  const max = Math.max(...rows.map((r) => r.secs), 1);
+  const total = rows.reduce((a, r) => a + r.secs, 0);
+
+  el.catSplit.innerHTML =
+    `<div class="split-head">Where the time went</div>` +
+    rows
+      .map(
+        (r) => `<div class="split-row ${r.secs ? '' : 'zero'}" style="--c:${r.color}">
+          <span class="split-name"><span class="split-ic">${r.icon}</span>${esc(r.label)}</span>
+          <span class="split-track"><span class="split-fill" style="width:${
+            (r.secs / max) * 100
+          }%"></span></span>
+          <span class="split-val">${fmtHm(r.secs)}<small>${
+          total ? Math.round((r.secs / total) * 100) : 0
+        }%</small></span>
+        </div>`
+      )
+      .join('');
 }
 
 function renderLevels() {
@@ -408,7 +540,7 @@ function renderLevels() {
 
   el.levelsHint.textContent =
     settings.dailyGoalMinutes > 0
-      ? `projections based on ${settings.dailyGoalMinutes} min/day`
+      ? `projections based on ${fmtHm(settings.dailyGoalMinutes * 60)}/day`
       : 'set a daily goal to see projections';
 
   el.levels.innerHTML = LEVELS.map((l) => {
@@ -436,7 +568,7 @@ function renderLevels() {
         <div class="level-name">Level ${l.n}</div>
         <div class="level-desc">${esc(l.desc)}</div>
         <div class="level-meta">
-          <span>🕒 Hours of input: <b>${l.hours.toLocaleString()}</b></span>
+          <span>🕒 Input time: <b>${l.hours.toLocaleString()}h</b></span>
           <span>💬 Known words: <b>${l.words}</b></span>
         </div>
         ${eta}
@@ -448,36 +580,33 @@ function renderLevels() {
 function renderStats() {
   // The baseline counts towards the total only — it has no date, so it is invisible to
   // every rolling window below.
-  const totalH = hours(entries.reduce((a, e) => a + e.duration_seconds, 0));
-  const baselineH = hours(
-    entries.filter((e) => e.kind === 'baseline').reduce((a, e) => a + e.duration_seconds, 0)
-  );
-  const videos = entries.filter((e) => e.kind !== 'baseline');
+  const totalSecs = sumSeconds(entries);
+  const baselineSecs = sumSeconds(entries.filter((e) => e.kind === 'baseline'));
+  const sessions = sessionEntries();
 
-  const todayEntries = videos.filter((e) => e.date === today);
-  const todayH = hours(todayEntries.reduce((a, e) => a + e.duration_seconds, 0));
+  const todayEntries = sessions.filter((e) => e.date === today);
+  const todaySecs = sumSeconds(todayEntries);
 
   const weekStart = shiftDate(today, -6);
-  const weekEntries = videos.filter((e) => e.date >= weekStart && e.date <= today);
-  const weekH = hours(weekEntries.reduce((a, e) => a + e.duration_seconds, 0));
+  const weekSecs = sumSeconds(sessions.filter((e) => e.date >= weekStart && e.date <= today));
 
-  $('statTotal').innerHTML = `${fmtH(totalH)}<em>h</em>`;
-  const sessions = videos.length
-    ? `${videos.length} session${videos.length === 1 ? '' : 's'} logged`
+  $('statTotal').innerHTML = hmMarkup(totalSecs);
+  const logged = sessions.length
+    ? `${sessions.length} session${sessions.length === 1 ? '' : 's'} logged`
     : 'no sessions yet';
-  $('statTotalFoot').textContent = baselineH
-    ? `${sessions} · incl. ${fmtH(baselineH)} h baseline`
-    : sessions;
+  $('statTotalFoot').textContent = baselineSecs
+    ? `${logged} · incl. ${fmtHm(baselineSecs)} baseline`
+    : logged;
 
-  $('statToday').innerHTML = `${fmtH(todayH)}<em>h</em>`;
-  $('statTodayFoot').textContent = `${todayEntries.length} video${
+  $('statToday').innerHTML = hmMarkup(todaySecs);
+  $('statTodayFoot').textContent = `${todayEntries.length} session${
     todayEntries.length === 1 ? '' : 's'
   } today`;
 
-  $('statWeek').innerHTML = `${fmtH(weekH)}<em>h</em>`;
-  $('statWeekFoot').textContent = `avg ${fmtH(weekH / 7)} h/day`;
+  $('statWeek').innerHTML = hmMarkup(weekSecs);
+  $('statWeekFoot').textContent = `avg ${fmtHm(weekSecs / 7)}/day`;
 
-  const days = new Set(videos.map((e) => e.date));
+  const days = new Set(sessions.map((e) => e.date));
   let streak = 0;
   let cursor = days.has(today) ? today : shiftDate(today, -1);
   while (days.has(cursor)) {
@@ -496,82 +625,95 @@ function renderChart() {
   const days = [];
   for (let i = 13; i >= 0; i--) days.push(shiftDate(today, -i));
 
-  const totals = days.map((d) =>
-    hours(entries.filter((e) => e.date === d).reduce((a, e) => a + e.duration_seconds, 0))
-  );
-  const max = Math.max(...totals, 0.5);
+  const totals = days.map((d) => sumSeconds(entries.filter((e) => e.date === d)));
+  const max = Math.max(...totals, 1800);
 
   el.chart.innerHTML = days
     .map((d, i) => {
-      const h = totals[i];
-      const pct = Math.max((h / max) * 100, h > 0 ? 4 : 1.5);
+      const secs = totals[i];
+      const pct = Math.max((secs / max) * 100, secs > 0 ? 4 : 1.5);
       const [, mo, day] = d.split('-');
       const dt = new Date(Number(d.slice(0, 4)), Number(mo) - 1, Number(day));
       const wd = dt.toLocaleDateString(undefined, { weekday: 'narrow' });
-      return `<div class="bar-wrap" title="${prettyDate(d)} — ${fmtH(h)} h">
-          <div class="bar ${h ? '' : 'zero'} ${d === today ? 'is-today' : ''}"
+      return `<div class="bar-wrap" title="${prettyDate(d)} — ${fmtHm(secs)}">
+          <div class="bar ${secs ? '' : 'zero'} ${d === today ? 'is-today' : ''}"
                style="height:${pct}%;animation-delay:${i * 28}ms">
-            <span>${fmtH(h)}h</span>
+            <span>${fmtHm(secs)}</span>
           </div>
           <div class="tick"><b>${wd}</b>${Number(day)}</div>
         </div>`;
     })
     .join('');
 
-  $('chartHint').textContent = `peak ${fmtH(max)} h · total ${fmtH(
+  $('chartHint').textContent = `peak ${fmtHm(Math.max(...totals, 0))} · total ${fmtHm(
     totals.reduce((a, b) => a + b, 0)
-  )} h`;
+  )}`;
 }
 
 function renderLog(flashId) {
   const q = el.search.value.trim().toLowerCase();
+  const filter = el.catFilter.value;
   const counts = {};
   entries.forEach((e) => {
     if (e.video_id) counts[e.video_id] = (counts[e.video_id] || 0) + 1;
   });
 
   const rows = entries
-    .filter((e) => !q || (e.title + ' ' + e.channel).toLowerCase().includes(q))
+    .filter((e) => !filter || entryCat(e) === filter)
+    .filter(
+      (e) => !q || (e.title + ' ' + e.channel + ' ' + catMeta(entryCat(e)).label).toLowerCase().includes(q)
+    )
     .sort((a, b) => (b.date + b.logged_at).localeCompare(a.date + a.logged_at));
 
   el.logCount.textContent = `${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}`;
-  el.empty.hidden = entries.length > 0;
-  el.empty.textContent = entries.length
-    ? ''
-    : 'Nothing logged yet — paste a YouTube link above to begin. 🎧';
-  if (!rows.length && q) {
-    el.empty.hidden = false;
-    el.empty.textContent = 'No entries match that search.';
+  el.empty.hidden = rows.length > 0;
+  if (!rows.length) {
+    el.empty.textContent = entries.length
+      ? 'No entries match that filter.'
+      : 'Nothing logged yet — paste a YouTube link or log a session above. 🎧';
   }
 
   el.logBody.innerHTML = rows
     .map((e) => {
+      const cat = entryCat(e);
       const rep = counts[e.video_id] > 1 ? `<span class="dup">×${counts[e.video_id]}</span>` : '';
-      const cell =
-        e.kind === 'baseline'
-          ? `<div class="vid">
+
+      let cell;
+      if (e.kind === 'baseline') {
+        cell = `<div class="vid">
                <span class="thumb baseline-thumb">⚑</span>
-               <div>
-                 <span class="baseline-title">${esc(e.title)}</span>
-                 <span class="dup">baseline</span>
+               <div class="vid-text">
+                 <span class="plain-title">${esc(e.title)}</span>
                  <small>counted in the total only</small>
                </div>
-             </div>`
-          : `<div class="vid">
+             </div>`;
+      } else if (cat === 'youtube' && e.video_id) {
+        cell = `<div class="vid">
                <img class="thumb" loading="lazy" alt=""
                     src="https://i.ytimg.com/vi/${esc(e.video_id)}/mqdefault.jpg">
-               <div>
+               <div class="vid-text">
                  <a href="${esc(e.url)}" target="_blank" rel="noopener"
                     title="${esc(e.title)}">${esc(e.title)}</a>${rep}
                  <small>${esc(e.channel || '—')}</small>
                </div>
              </div>`;
+      } else {
+        // the chip in the Type column already names the category — don't repeat it here
+        const c = catMeta(cat);
+        cell = `<div class="vid">
+               <span class="thumb cat-thumb" style="--c:${c.color};--c-soft:${c.soft};--c-line:${c.line}">${c.icon}</span>
+               <div class="vid-text">
+                 <span class="plain-title" title="${esc(e.title)}">${esc(e.title)}</span>
+                 <small>logged ${esc((e.logged_at || '').slice(0, 10) || '—')}</small>
+               </div>
+             </div>`;
+      }
 
       return `<tr data-id="${e.entry_id}" class="${e.entry_id === flashId ? 'flash' : ''}">
         <td class="date">${e.kind === 'baseline' ? '—' : prettyDate(e.date)}</td>
+        <td class="type">${catChip(cat)}</td>
         <td>${cell}</td>
-        <td class="num hours">${fmtH(hours(e.duration_seconds))}</td>
-        <td class="num">${fmtClock(e.duration_seconds)}</td>
+        <td class="num hours">${fmtHm(e.duration_seconds)}</td>
         <td class="num"><button class="del" title="Delete entry" aria-label="Delete entry">✕</button></td>
       </tr>`;
     })
@@ -628,15 +770,12 @@ async function submitEntry(payload, btn) {
 
     entries.push(data.entry);
     render(data.entry.entry_id);
-    flash(
-      `Added “${data.entry.title}” — ${fmtH(hours(data.entry.duration_seconds))} h.`,
-      'ok'
-    );
+    flash(`Added “${data.entry.title}” — ${fmtHm(data.entry.duration_seconds)}.`, 'ok');
     el.form.reset();
     el.date.value = today;
     closeManual();
     pending = null;
-    el.url.focus();
+    (category === 'youtube' ? el.url : el.title).focus();
   } catch (err) {
     flash('Network error: ' + err.message, 'err');
   } finally {
@@ -644,16 +783,30 @@ async function submitEntry(payload, btn) {
   }
 }
 
+const hmSeconds = (hInput, mInput) =>
+  (Number(hInput.value) || 0) * 3600 + (Number(mInput.value) || 0) * 60;
+
 el.form.addEventListener('submit', (ev) => {
   ev.preventDefault();
-  const url = el.url.value.trim();
-  if (!url) return;
-  submitEntry({ url, date: el.date.value });
+
+  if (category === 'youtube') {
+    const url = el.url.value.trim();
+    if (!url) return flash('Paste a YouTube link first.', 'err');
+    return submitEntry({ category, url, date: el.date.value });
+  }
+
+  const seconds = hmSeconds(el.cH, el.cM);
+  if (seconds <= 0) return flash('Enter how long the session lasted.', 'err');
+  submitEntry({
+    category,
+    date: el.date.value,
+    durationSeconds: seconds,
+    title: el.title.value.trim(),
+  });
 });
 
 el.manualSave.addEventListener('click', async () => {
-  const secs =
-    (Number(el.mH.value) || 0) * 3600 + (Number(el.mM.value) || 0) * 60 + (Number(el.mS.value) || 0);
+  const secs = hmSeconds(el.mH, el.mM);
 
   if (manualMode === 'baseline') {
     busy(true, el.manualSave);
@@ -666,12 +819,7 @@ el.manualSave.addEventListener('click', async () => {
       if (!res.ok) throw new Error('the server refused it');
       await load();
       closeManual();
-      flash(
-        secs > 0
-          ? `Baseline set to ${fmtH(hours(secs))} h.`
-          : 'Baseline removed.',
-        'ok'
-      );
+      flash(secs > 0 ? `Baseline set to ${fmtHm(secs)}.` : 'Baseline removed.', 'ok');
     } catch (err) {
       el.manualMsg.textContent = 'Could not save the baseline: ' + err.message;
     } finally {
@@ -686,6 +834,7 @@ el.manualSave.addEventListener('click', async () => {
   }
   submitEntry(
     {
+      category: 'youtube',
       url: pending ? pending.videoId : el.url.value.trim(),
       date: el.date.value,
       durationSeconds: secs,
@@ -715,13 +864,14 @@ el.logBody.addEventListener('click', async (ev) => {
 });
 
 el.search.addEventListener('input', () => renderLog());
+el.catFilter.addEventListener('change', () => renderLog());
 
 function closeManual() {
   el.manualBox.hidden = true;
   manualMode = 'video';
   el.mTitleField.hidden = false;
-  el.manualSave.textContent = 'Save with this duration';
-  el.mH.value = el.mM.value = el.mS.value = '';
+  el.manualSave.querySelector('.btn-label').textContent = 'Save with this duration';
+  el.mH.value = el.mM.value = '';
 }
 
 function openManual(mode, message) {
@@ -729,15 +879,15 @@ function openManual(mode, message) {
   el.manualBox.hidden = false;
   el.manualMsg.textContent = message;
   el.mTitleField.hidden = mode === 'baseline';
-  el.manualSave.textContent = mode === 'baseline' ? 'Save baseline' : 'Save with this duration';
+  el.manualSave.querySelector('.btn-label').textContent =
+    mode === 'baseline' ? 'Save baseline' : 'Save with this duration';
   el.msg.hidden = true;
 
   if (mode === 'baseline') {
     const current = entries.find((e) => e.kind === 'baseline');
-    const secs = current ? current.duration_seconds : 0;
-    el.mH.value = Math.floor(secs / 3600) || '';
-    el.mM.value = Math.floor((secs % 3600) / 60) || '';
-    el.mS.value = secs % 60 || '';
+    const mins = Math.round((current ? current.duration_seconds : 0) / 60);
+    el.mH.value = Math.floor(mins / 60) || '';
+    el.mM.value = mins % 60 || '';
   }
   el.mH.focus();
 }
@@ -758,21 +908,23 @@ el.baselineToggle.addEventListener('click', () => {
 /* ------------------------------------------------------------- daily goal */
 
 function openGoalEditor() {
-  el.goalInput.value = settings.dailyGoalMinutes;
-  el.goalInput.hidden = false;
+  const mins = settings.dailyGoalMinutes;
+  el.goalH.value = Math.floor(mins / 60) || '';
+  el.goalM.value = mins % 60 || '';
+  el.goalEditor.hidden = false;
   el.goalNum.hidden = true;
-  el.goalInput.focus();
-  el.goalInput.select();
+  el.goalH.focus();
+  el.goalH.select();
 }
 
 function closeGoalEditor() {
-  el.goalInput.hidden = true;
+  el.goalEditor.hidden = true;
   el.goalNum.hidden = false;
 }
 
 async function saveGoal() {
-  if (el.goalInput.hidden) return; // already saved by another handler
-  const mins = Number(el.goalInput.value);
+  if (el.goalEditor.hidden) return; // already saved by another handler
+  const mins = Math.round(hmSeconds(el.goalH, el.goalM) / 60);
   closeGoalEditor();
   if (!Number.isFinite(mins) || mins < 0 || mins > 1440 || mins === settings.dailyGoalMinutes) {
     return;
@@ -789,7 +941,7 @@ async function saveGoal() {
     render();
     flash(
       settings.dailyGoalMinutes
-        ? `Daily goal set to ${settings.dailyGoalMinutes} min.`
+        ? `Daily goal set to ${fmtHm(settings.dailyGoalMinutes * 60)}.`
         : 'Daily goal cleared.',
       'ok'
     );
@@ -799,12 +951,16 @@ async function saveGoal() {
 }
 
 el.goalEdit.addEventListener('click', () => {
-  if (el.goalInput.hidden) openGoalEditor();
+  if (el.goalEditor.hidden) openGoalEditor();
   else saveGoal();
 });
 el.goalNum.addEventListener('click', openGoalEditor);
-el.goalInput.addEventListener('blur', saveGoal);
-el.goalInput.addEventListener('keydown', (ev) => {
+
+// Save when focus leaves the editor entirely — moving between the h and m boxes is fine.
+el.goalEditor.addEventListener('focusout', (ev) => {
+  if (!el.goalEditor.contains(ev.relatedTarget) && ev.relatedTarget !== el.goalEdit) saveGoal();
+});
+el.goalEditor.addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter') {
     ev.preventDefault();
     saveGoal();

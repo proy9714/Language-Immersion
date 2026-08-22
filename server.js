@@ -26,16 +26,41 @@ const csvPathFor = (code) => path.join(DATA_DIR, `immersion_log_${langOrDefault(
 
 const COLUMNS = [
   'entry_id',
-  'kind', // "video" | "baseline"
+  'kind', // "session" | "baseline"
+  'category', // one of CATEGORIES; empty for the baseline
   'date',
   'url',
   'video_id',
   'title',
   'channel',
   'duration_seconds',
-  'duration_hours',
+  'duration_hm', // human-readable "1h 23m" — the seconds column is the machine one
   'logged_at',
 ];
+
+/**
+ * Every immersion event belongs to one of these. Only YouTube is looked up online —
+ * the rest are whatever you type, with a duration you enter yourself.
+ */
+const CATEGORIES = [
+  { id: 'youtube', label: 'YouTube', icon: '▶' },
+  { id: 'watching', label: 'Watching', icon: '📺' },
+  { id: 'reading', label: 'Reading', icon: '📖' },
+  { id: 'listening', label: 'Listening', icon: '🎧' },
+  { id: 'speaking', label: 'Speaking', icon: '🗣️' },
+];
+const isCategory = (id) => CATEGORIES.some((c) => c.id === id);
+const categoryLabel = (id) => (CATEGORIES.find((c) => c.id === id) || { label: 'Immersion' }).label;
+
+/** Durations are written as hours and minutes — never decimal hours. */
+function formatHm(seconds) {
+  const mins = Math.round(Math.max(0, seconds) / 60);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+}
 
 /* ------------------------------------------------------------------ CSV I/O */
 
@@ -113,16 +138,20 @@ function readEntries(lang) {
   return rows.slice(1).map((r) => {
     const obj = {};
     header.forEach((h, i) => (obj[h] = r[i] !== undefined ? r[i] : ''));
+    const kind = obj.kind === 'baseline' ? 'baseline' : 'session';
+    const seconds = Number(obj.duration_seconds) || 0;
     return {
       entry_id: obj.entry_id || '',
-      kind: obj.kind === 'baseline' ? 'baseline' : 'video',
+      kind,
+      // logs written before categories existed held YouTube videos and nothing else
+      category: isCategory(obj.category) ? obj.category : kind === 'baseline' ? '' : 'youtube',
       date: obj.date || '',
       url: obj.url || '',
       video_id: obj.video_id || '',
       title: obj.title || '',
       channel: obj.channel || '',
-      duration_seconds: Number(obj.duration_seconds) || 0,
-      duration_hours: Number(obj.duration_hours) || 0,
+      duration_seconds: seconds,
+      duration_hm: formatHm(seconds),
       logged_at: obj.logged_at || '',
     };
   });
@@ -141,11 +170,23 @@ function writeAll(lang, entries) {
   const body = entries
     .map((e) =>
       COLUMNS.map((c) =>
-        csvEscape(c === 'duration_hours' ? (e.duration_seconds / 3600).toFixed(4) : e[c])
+        csvEscape(c === 'duration_hm' ? formatHm(e.duration_seconds) : e[c])
       ).join(',')
     )
     .join('\n');
   fs.writeFileSync(file, COLUMNS.join(',') + '\n' + (body ? body + '\n' : ''), 'utf8');
+}
+
+/**
+ * Logs written before categories existed have a different header (and decimal hours).
+ * Reading normalises them, so one rewrite at startup brings the file up to date.
+ */
+function upgradeCsv(lang) {
+  const file = ensureCsv(lang);
+  const header = fs.readFileSync(file, 'utf8').split('\n', 1)[0].replace(/\r$/, '');
+  if (header === COLUMNS.join(',')) return;
+  writeAll(lang, readEntries(lang));
+  console.log('  upgraded ' + path.basename(file) + ' → category format');
 }
 
 /* ---------------------------------------------------------------- settings */
@@ -376,6 +417,7 @@ const server = http.createServer(async (req, res) => {
         entries: readEntries(lang),
         language: lang,
         languages: LANGUAGES,
+        categories: CATEGORIES,
         activeLanguage: settings.activeLanguage,
         settings: { dailyGoalMinutes: settings.goals[lang] },
         csvPath: csvPathFor(lang),
@@ -407,6 +449,36 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/entries' && req.method === 'POST') {
       const body = await readBody(req);
+      const category = isCategory(body.category) ? body.category : 'youtube';
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(body.date || '') ? body.date : todayLocal();
+
+      /* Anything that is not a YouTube link is logged exactly as it was typed:
+         a title of your choosing and a duration in hours and minutes. */
+      if (category !== 'youtube') {
+        const seconds = Math.round(Number(body.durationSeconds) || 0);
+        if (!(seconds > 0)) {
+          return sendJson(res, 400, { error: 'Enter how long the session lasted.' });
+        }
+        if (seconds > 24 * 3600) {
+          return sendJson(res, 400, { error: 'A single session cannot be longer than 24 hours.' });
+        }
+        const entry = {
+          entry_id: makeId(),
+          kind: 'session',
+          category,
+          date,
+          url: '',
+          video_id: '',
+          title: String(body.title || '').trim() || `${categoryLabel(category)} session`,
+          channel: '',
+          duration_seconds: seconds,
+          duration_hm: formatHm(seconds),
+          logged_at: localTimestamp(),
+        };
+        appendEntry(lang, entry);
+        return sendJson(res, 201, { entry });
+      }
+
       const videoId = extractVideoId(body.url);
       if (!videoId) {
         return sendJson(res, 400, { error: 'That does not look like a YouTube video link.' });
@@ -433,17 +505,17 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      const date = /^\d{4}-\d{2}-\d{2}$/.test(body.date || '') ? body.date : todayLocal();
       const entry = {
         entry_id: makeId(),
-        kind: 'video',
+        kind: 'session',
+        category: 'youtube',
         date,
         url: 'https://www.youtube.com/watch?v=' + videoId,
         video_id: videoId,
         title: (body.title || meta.title || '').trim() || 'Untitled video',
         channel: (body.channel || meta.channel || '').trim(),
         duration_seconds: seconds,
-        duration_hours: (seconds / 3600).toFixed(4),
+        duration_hm: formatHm(seconds),
         logged_at: localTimestamp(),
       };
       appendEntry(lang, entry);
@@ -464,13 +536,14 @@ const server = http.createServer(async (req, res) => {
         kept.push({
           entry_id: makeId(),
           kind: 'baseline',
+          category: '',
           date: '',
           url: '',
           video_id: '',
           title: 'Immersion before tracking started',
           channel: '',
           duration_seconds: seconds,
-          duration_hours: (seconds / 3600).toFixed(4),
+          duration_hm: formatHm(seconds),
           logged_at: localTimestamp(),
         });
       }
@@ -512,7 +585,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 migrateLegacyCsv();
-LANGUAGES.forEach((l) => ensureCsv(l.code));
+LANGUAGES.forEach((l) => {
+  ensureCsv(l.code);
+  upgradeCsv(l.code);
+});
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {

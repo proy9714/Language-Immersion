@@ -38,9 +38,13 @@
   <section class="goal-bar card" aria-label="Daily goal">
     <span class="goal-label">Daily Goal</span>
     <div class="goal-track"><div class="goal-fill" id="goalFill"></div></div>
-    <span class="goal-num" id="goalNum">0/60 min</span>
-    <input class="goal-input" id="goalInput" type="number" min="0" max="1440" step="5" hidden
-           aria-label="Daily goal in minutes" />
+    <span class="goal-num" id="goalNum">0m / 1h</span>
+    <div class="goal-editor hm" id="goalEditor" hidden>
+      <input id="goalH" type="number" min="0" max="24" step="1" placeholder="0" aria-label="Daily goal hours" />
+      <span class="hm-unit">h</span>
+      <input id="goalM" type="number" min="0" max="59" step="5" placeholder="0" aria-label="Daily goal minutes" />
+      <span class="hm-unit">m</span>
+    </div>
     <button class="goal-edit" id="goalEdit" type="button" title="Change your daily goal">✏️</button>
   </section>
 
@@ -48,20 +52,20 @@
   <section class="stats" aria-label="Dashboard">
     <article class="card stat hero">
       <span class="label">Total immersion</span>
-      <strong class="value" id="statTotal">0.00<em>h</em></strong>
+      <strong class="value" id="statTotal">0<em>m</em></strong>
       <span class="foot" id="statTotalFoot">no sessions yet</span>
     </article>
 
     <article class="card stat accent-red">
       <span class="label">Today</span>
-      <strong class="value" id="statToday">0.00<em>h</em></strong>
-      <span class="foot" id="statTodayFoot">0 videos today</span>
+      <strong class="value" id="statToday">0<em>m</em></strong>
+      <span class="foot" id="statTodayFoot">0 sessions today</span>
     </article>
 
     <article class="card stat accent-gold">
       <span class="label">Last 7 days</span>
-      <strong class="value" id="statWeek">0.00<em>h</em></strong>
-      <span class="foot" id="statWeekFoot">avg 0.00 h/day</span>
+      <strong class="value" id="statWeek">0<em>m</em></strong>
+      <span class="foot" id="statWeekFoot">avg 0m/day</span>
     </article>
 
     <article class="card stat">
@@ -72,17 +76,36 @@
   </section>
 
   <!-- --------------------------------------------------------------- form -->
-  <section class="card add" aria-label="Add a video">
+  <section class="card add" aria-label="Log immersion">
+    <div class="cat-tabs" id="catTabs" role="tablist" aria-label="Type of immersion"></div>
+
     <form id="addForm" autocomplete="off">
       <div class="row">
-        <div class="field grow">
+        <div class="field grow" id="urlField">
           <label for="url">YouTube link</label>
-          <input id="url" name="url" type="text" placeholder="https://www.youtube.com/watch?v=…" required />
+          <input id="url" name="url" type="text" placeholder="https://www.youtube.com/watch?v=…" />
         </div>
-        <div class="field">
-          <label for="date">Date watched</label>
+
+        <div class="field grow" id="titleField" hidden>
+          <label for="title">Title <span class="opt">optional</span></label>
+          <input id="title" name="title" type="text" placeholder="What did you immerse in?" />
+        </div>
+
+        <div class="field time-field" id="timeField" hidden>
+          <label for="cH">How long</label>
+          <div class="hm">
+            <input id="cH" type="number" min="0" max="24" step="1" placeholder="0" aria-label="Hours" />
+            <span class="hm-unit">h</span>
+            <input id="cM" type="number" min="0" max="59" step="5" placeholder="0" aria-label="Minutes" />
+            <span class="hm-unit">m</span>
+          </div>
+        </div>
+
+        <div class="field date-field">
+          <label for="date">Date</label>
           <input id="date" name="date" type="date" />
         </div>
+
         <button class="primary" type="submit" id="submitBtn">
           <span class="btn-label">Log immersion</span>
           <span class="spinner" hidden></span>
@@ -97,23 +120,23 @@
       <div class="manual" id="manualBox" hidden>
         <p class="manual-msg" id="manualMsg"></p>
         <div class="row tight">
-          <div class="field">
-            <label for="mH">Hours</label>
-            <input id="mH" type="number" min="0" step="1" placeholder="0" />
-          </div>
-          <div class="field">
-            <label for="mM">Minutes</label>
-            <input id="mM" type="number" min="0" max="59" step="1" placeholder="0" />
-          </div>
-          <div class="field">
-            <label for="mS">Seconds</label>
-            <input id="mS" type="number" min="0" max="59" step="1" placeholder="0" />
+          <div class="field time-field">
+            <label for="mH">Duration</label>
+            <div class="hm">
+              <input id="mH" type="number" min="0" max="9999" step="1" placeholder="0" aria-label="Hours" />
+              <span class="hm-unit">h</span>
+              <input id="mM" type="number" min="0" max="59" step="5" placeholder="0" aria-label="Minutes" />
+              <span class="hm-unit">m</span>
+            </div>
           </div>
           <div class="field grow" id="mTitleField">
-            <label for="mTitle">Title (optional)</label>
+            <label for="mTitle">Title <span class="opt">optional</span></label>
             <input id="mTitle" type="text" placeholder="Video title" />
           </div>
-          <button class="primary alt" type="button" id="manualSave">Save with this duration</button>
+          <button class="primary alt" type="button" id="manualSave">
+            <span class="btn-label">Save with this duration</span>
+            <span class="spinner" hidden></span>
+          </button>
         </div>
       </div>
 
@@ -133,17 +156,17 @@
       <div class="level-progress">
         <div class="lp-head">
           <span>Total input time</span>
-          <strong id="lpTotal">0 hrs</strong>
+          <strong id="lpTotal">0m</strong>
         </div>
         <div class="lp-track"><div class="lp-fill" id="lpFill"></div></div>
         <div class="lp-scale">
-          <span id="lpFrom">0 hrs</span>
-          <span id="lpTo">50 hrs</span>
+          <span id="lpFrom">0h</span>
+          <span id="lpTo">50h</span>
         </div>
       </div>
       <div class="level-next" id="levelNext">
-        <span>Hours to level 2</span>
-        <strong id="levelNextHrs">50 hrs</strong>
+        <span>Time to level 2</span>
+        <strong id="levelNextHrs">50h</strong>
       </div>
     </article>
 
@@ -152,13 +175,13 @@
       <div class="stat-tiles">
         <div class="tile tile-a">
           <span class="tile-icon">⏰</span>
-          <strong id="statWatched">0</strong>
-          <span class="tile-label">hours watched</span>
+          <strong id="statWatched">0m</strong>
+          <span class="tile-label">time immersed</span>
         </div>
         <div class="tile tile-b">
           <span class="tile-icon">🎬</span>
-          <strong id="statVideos">0</strong>
-          <span class="tile-label">watched videos</span>
+          <strong id="statSessions">0</strong>
+          <span class="tile-label">sessions logged</span>
         </div>
         <div class="tile tile-c">
           <span class="tile-icon">🗓️</span>
@@ -166,6 +189,7 @@
           <span class="tile-label">days you practiced</span>
         </div>
       </div>
+      <div class="cat-split" id="catSplit"></div>
     </article>
   </section>
 
@@ -182,7 +206,7 @@
   <section class="card chart-card">
     <div class="card-head">
       <h2>Last 14 days</h2>
-      <span class="hint" id="chartHint">hours per day</span>
+      <span class="hint" id="chartHint">time per day</span>
     </div>
     <div class="chart" id="chart"></div>
   </section>
@@ -192,6 +216,7 @@
     <div class="card-head">
       <h2>Immersion log <span class="lang-chip" id="logChip"></span></h2>
       <div class="log-tools">
+        <select id="catFilter" aria-label="Filter by type"></select>
         <input id="search" type="search" placeholder="Search title or channel…" />
         <span class="count" id="logCount">0 entries</span>
       </div>
@@ -201,16 +226,16 @@
         <thead>
           <tr>
             <th>Date</th>
-            <th>Video</th>
-            <th class="num">Hours</th>
-            <th class="num">Length</th>
+            <th>Type</th>
+            <th>Entry</th>
+            <th class="num">Duration</th>
             <th></th>
           </tr>
         </thead>
         <tbody id="logBody"></tbody>
       </table>
     </div>
-    <p class="empty" id="empty" hidden>Nothing logged yet — paste a YouTube link above to begin. 🎧</p>
+    <p class="empty" id="empty" hidden>Nothing logged yet — paste a YouTube link or log a session above. 🎧</p>
   </section>
 
   <footer class="foot-note">
