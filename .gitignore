@@ -1,8 +1,8 @@
 # ---- Your immersion data (personal, written at runtime) ----
 # The app recreates data/ on first start. Delete these three lines if you
 # would rather keep your logs backed up in the repo.
-data/*.csv
-data/settings.json
+# data/*.csv
+# data/settings.json
 
 # ---- Node ----
 node_modules/
